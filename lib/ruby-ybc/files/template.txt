@@ -14,7 +14,7 @@ VALUE rb_new_native_proc(VALUE(*func)(ANYARGS), int argc, uintptr_t locals_ptr, 
 
 #functions_section
 
-void Init_locals()
+void Init_#ext_name()
 {
   VALUE toplevel_object = rb_eval_cmd(rb_str_new2("self"), Qnil, 0);
   stack_cache = malloc(100 * sizeof(struct rb_stack_struct));

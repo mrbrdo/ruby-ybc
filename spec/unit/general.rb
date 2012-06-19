@@ -1,11 +1,9 @@
 require File.expand_path('../../spec_helper', __FILE__)
 
-class GeneralTest
-  
-end
-
-describe GeneralTest do
-  it "does whatever" do
-    example_should_have_equal_output "proc_basic"
+describe CodeGenerator do
+  it "passes examples" do
+    Dir[File::expand_path("../../examples/*.rb", __FILE__)].each do |file|
+      example_should_have_equal_output File::basename(file, ".rb")
+    end
   end
 end

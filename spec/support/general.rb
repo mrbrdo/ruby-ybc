@@ -3,7 +3,7 @@ def rb_example name
 end
 
 def compiled_example name
-  base_dir = File.expand_path("../../../", __FILE__)
+  base_dir = File::expand_path("../../../", __FILE__)
   
   str = File::read("#{base_dir}/spec/examples/#{name}.rb")
   str = str.sub("\n", "C\n")
@@ -16,25 +16,31 @@ def compiled_example name
     pp cg.iseq.to_a
     exit
   end
-  system("cd \"#{base_dir}/ext/locals\" && cp template.txt locals.c")
-  c_file = "#{base_dir}/ext/locals/locals.c"
-  c = File::read(c_file)
-  File::open(c_file, "w") {|f| f.write c.sub("#functions_section", cg.code_with_stub)}
+  
+  g = RubyYbc::ExtensionGenerator.new(name, "#{base_dir}/tmp/#{name}")
+  g.create_extension(cg.code_with_stub)
+  
+  raise "Compile unsuccessful!" unless g.build
+end
 
-  system("cd \"#{base_dir}\" && rake")
-  raise "Compile unsuccessful!" unless $?.success?
-  require "#{base_dir}/lib/locals/locals"
+def run_compiled_example_in_new_process name
+  test_dir = File.expand_path("../../../tmp", __FILE__)
+  File.open("#{test_dir}/test#{name}.rb", "w") do |f|
+    f.write <<-TEST
+    require_relative './#{name}/#{name}'
+    #{name.camelize}C::run
+TEST
+  end
+  %x[ruby "#{test_dir}/test#{name}.rb"]
 end
 
 def example_should_have_equal_output name
+    compiled_example name
     rb_example name
     out_rb = capture_stdout do
       (name.camelize.constantize)::run
     end
-    compiled_example name
-    out_c = capture_stdout do
-      ("#{name.camelize}C".constantize)::run
-    end
+    out_c = run_compiled_example_in_new_process name
     out_c.should eq(out_rb)
 end
 
