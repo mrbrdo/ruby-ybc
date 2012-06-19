@@ -164,7 +164,7 @@ STUB
   def yarv_custom_defmethod name, iseq
     compile_method name, iseq
     argc = iseq[4][:arg_size]
-    exec "rb_define_singleton_method(self.d, \"#{name}\", #{name}, #{argc});"
+    exec "  rb_define_singleton_method(self.d, \"#{name}\", #{name}, #{argc});"
     @rsp -= 1
     # TODO supposed to return something here
   end
@@ -172,7 +172,7 @@ STUB
   def yarv_custom_defsmethod name, iseq
     compile_method name, iseq
     argc = iseq[4][:arg_size]
-    exec "rb_define_singleton_method(self.d, \"#{name}\", #{name}, #{argc});"
+    exec "  rb_define_singleton_method(self.d, \"#{name}\", #{name}, #{argc});"
   end
   
   def yarv_custom_newproc argc, blockptr
@@ -183,9 +183,9 @@ STUB
   end
   
   def yarv_defineclass name, iseq, todo
+    @rsp -= 1 # todo
     compile_method name, iseq
-    exec "  #{name}(rb_define_class(\"#{name}\", rb_cObject));"
-    # TODO should put class on stack probably, dunno what it expects as return
+    yarv_putobject("#{name}(rb_define_class(\"#{name}\", rb_cObject))", false)
   end
   
   def yarv_putspecialobject num

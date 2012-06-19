@@ -2,7 +2,7 @@ require 'rubygems'
 require 'spork'
 require 'active_support/core_ext'
 require 'pry'
-require_relative '../ext/locals/code_generator'
+require_relative '../lib/ruby-ybc/code_generator'
 require_relative '../lib/ruby-ybc/extension_generator'
 
 Spork.prefork do
