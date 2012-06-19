@@ -68,6 +68,16 @@ module RubyYbc
         FIX2LONG(sp[#{@rsp-1}]), #{@rsp-1});"
       rsp.dec
     end
+    
+    def yarv_branchunless lab
+      exec rsp.commit
+      exec "  if (!RTEST(sp[#{@rsp}])) goto #{label_full_name(lab)};"
+    end
+    
+    def yarv_jump lab
+      exec rsp.commit
+      exec "  goto #{label_full_name(lab)};"
+    end
   
     def yarv_setlocal idx
       exec rsp.commit
@@ -271,18 +281,29 @@ STUB
       exec "  // Compiled method #{name.inspect}."
       @code = CodeGenerator.new(name, iseq, @iseq).code_with_stub + "\n#{@code}"
     end
+    
+    def label_full_name(lab)
+      "#{@func_name}_#{lab}"
+    end
+    
+    def label_now(lab)
+      exec "  #{label_full_name(lab)}:"
+    end
   
     def process
       @iseq[13].each do |op|
-        next unless op.kind_of? Array
-      
-        op_display = op.map{|i| i.kind_of?(Array) ? "Array" : i.inspect}.join(", ")
-        op_display = "YARV " + op_display.sub(",", ":")
-        op_display = op_display.sub(":", "")
-        exec "  // #{op_display}"
-        name = op[0]
-        op = op.slice(1, op.count)
-        self.send("yarv_#{name}", *op)
+        
+        if op.kind_of? Array
+          op_display = op.map{|i| i.kind_of?(Array) ? "Array" : i.inspect}.join(", ")
+          op_display = "YARV " + op_display.sub(",", ":")
+          op_display = op_display.sub(":", "")
+          exec "  // #{op_display}"
+          name = op[0]
+          op = op.slice(1, op.count)
+          self.send("yarv_#{name}", *op)
+        elsif op.kind_of? Symbol
+          label_now(op)
+        end
       end
       code_with_stub
     end
