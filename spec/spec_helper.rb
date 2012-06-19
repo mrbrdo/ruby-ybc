@@ -1,5 +1,6 @@
 require 'rubygems'
 require 'spork'
+require 'active_support/core_ext'
 require 'pry'
 require_relative '../ext/locals/code_generator'
 

@@ -1,11 +1,11 @@
-def rb_example num
-  require_relative "../examples/example#{num}"
+def rb_example name
+  require_relative "../examples/#{name}"
 end
 
-def compiled_example num
+def compiled_example name
   base_dir = File.expand_path("../../../", __FILE__)
   
-  str = File::read("#{base_dir}/spec/examples/example#{num}.rb")
+  str = File::read("#{base_dir}/spec/examples/#{name}.rb")
   str = str.sub("\n", "C\n")
   iseq = RubyVM::InstructionSequence::compile(str)
 
@@ -26,16 +26,16 @@ def compiled_example num
   require "#{base_dir}/lib/locals/locals"
 end
 
-def example_should_have_equal_output num
-    rb_example num
-    out1 = capture_stdout do
-      eval("Example#{num}")::run
+def example_should_have_equal_output name
+    rb_example name
+    out_rb = capture_stdout do
+      (name.camelize.constantize)::run
     end
-    compiled_example num
-    out2 = capture_stdout do
-      eval("Example#{num}C")::run
+    compiled_example name
+    out_c = capture_stdout do
+      ("#{name.camelize}C".constantize)::run
     end
-    out1.should eq(out2)
+    out_c.should eq(out_rb)
 end
 
 require 'stringio'

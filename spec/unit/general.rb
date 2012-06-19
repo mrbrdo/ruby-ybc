@@ -6,6 +6,6 @@ end
 
 describe GeneralTest do
   it "does whatever" do
-    example_should_have_equal_output 1
+    example_should_have_equal_output "proc_basic"
   end
 end

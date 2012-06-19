@@ -1,4 +1,4 @@
-module Example1
+module ProcBasic
   def self.met proc
     proc.call
   end

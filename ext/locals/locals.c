@@ -98,8 +98,8 @@ VALUE met(VALUE self, VALUE arg1)
   return met_impl((nabi_t)self, (nabi_t)(arg1));
 }
 
-VALUE Example1C_impl(nabi_t self) __attribute__((noinline));
-VALUE Example1C_impl(nabi_t self) {
+VALUE ProcBasicC_impl(nabi_t self) __attribute__((noinline));
+VALUE ProcBasicC_impl(nabi_t self) {
   RB_ENTER(4, 1);
   // YARV trace: 2
   // YARV trace: 1
@@ -128,9 +128,9 @@ rb_define_singleton_method(self.d, "run", run, 0);
   RB_LEAVE(0);
 }
 
-VALUE Example1C(VALUE self)
+VALUE ProcBasicC(VALUE self)
 {
-  return Example1C_impl((nabi_t)self);
+  return ProcBasicC_impl((nabi_t)self);
 }
 
 VALUE toplevel_function_impl(nabi_t self) __attribute__((noinline));
@@ -140,9 +140,9 @@ VALUE toplevel_function_impl(nabi_t self) {
   // YARV putspecialobject: 3
   // YARV putnil
   YARV_PUTOBJECT(Qnil, 0);
-  // YARV defineclass: :Example1C, Array, 5
-  // Compiled method :Example1C.
-  Example1C(rb_define_class("Example1C", rb_cObject));
+  // YARV defineclass: :ProcBasicC, Array, 5
+  // Compiled method :ProcBasicC.
+  ProcBasicC(rb_define_class("ProcBasicC", rb_cObject));
   // YARV leave
   RB_LEAVE(0);
 }
