@@ -13,7 +13,7 @@ module RubyYbc
       @stack_max = @iseq[4][:stack_max]
       @local_size = @iseq[4][:local_size]
       @defined_blocks = 0
-      @rsp = GeneratorStack.new(@stack_max)
+      @rsp = GeneratorStack.new(self, @stack_max)
       @parent_iseq = parent_iseq
       @code = ""
       prologue
@@ -35,15 +35,7 @@ module RubyYbc
   
     def epilogue
       exec rsp.commit
-      if @rsp < 0
-        if @rsp == -1
-          puts "WARNING: Stack pointer is #{@rsp}. Empty function?"
-        else
-          raise "Something went wrong with stack pointer."
-        end
-        @rsp = 0
-      end
-    	exec "  RB_LEAVE(#{@rsp});"
+    	exec "  RB_LEAVE(#{@rsp-1});"
     	exec "}"
     end
   
@@ -60,18 +52,10 @@ module RubyYbc
         raise "Don't know how to parse #{obj.class}"
       end
     end
-  
-    def yarv_opt_plus ic
-      exec rsp.commit
-      exec "  YARV_PUTOBJECT(LONG2FIX(
-        FIX2LONG(sp[#{@rsp}]) +
-        FIX2LONG(sp[#{@rsp-1}]), #{@rsp-1});"
-      rsp.dec
-    end
     
     def yarv_branchunless lab
       exec rsp.commit
-      exec "  if (!RTEST(sp[#{@rsp}])) goto #{label_full_name(lab)};"
+      exec "  if (!RTEST(#{@rsp-1})) goto #{label_full_name(lab)};"
     end
     
     def yarv_jump lab
@@ -81,7 +65,7 @@ module RubyYbc
   
     def yarv_setlocal idx
       exec rsp.commit
-      exec "  YARV_SETLOCAL(v#{idx}, #{@rsp});"
+      exec "  YARV_SETLOCAL(v#{idx}, #{@rsp-1});"
       rsp.dec
     end
     
@@ -94,7 +78,7 @@ module RubyYbc
     def yarv_getdynamic idx, scope
       exec rsp.commit
       rsp.inc
-      exec "  YARV_GETDYNAMIC(#{idx}, #{scope}, #{@rsp});"
+      exec "  YARV_GETDYNAMIC(#{idx}, #{scope}, #{@rsp-1});"
     end
   
     def yarv_putself
@@ -146,17 +130,16 @@ module RubyYbc
       exec rsp.commit
       # compiler optimizes and doesn't save local variables, so must refresh
       exec '  asm(""::'+(2..@local_size).map{|i|"\"m\"(v#{i})"}.join(",")+'); // refresh vars'
-      exec "  YARV_SEND(#{@rsp}, ", false
+      exec "  YARV_SEND(#{@rsp-1}, ", false
       # block
       unless blockptr.nil?
         @defined_blocks += 1
         compile_method "#{@func_name}_block#{@defined_blocks}", blockptr
       end
-      exec "#{@rsp-n_args}, \"#{op_id}\", #{n_args}" +
-        (0...n_args).map{|i| ", sp[#{@rsp-i}]"}.join + ");"
+      exec "#{@rsp-(n_args+1)}, \"#{op_id}\", #{n_args}" +
+        (0...n_args).map{|i| ", #{@rsp-(i+1)}"}.join + ");"
       exec '  asm("":'+(2..@local_size).map{|i|"\"=m\"(v#{i})"}.join(",")+'); // refresh vars'
-      rsp.dec (n_args + 1) # pop args + self from stack
-      rsp.inc 1 # push result
+      rsp.dec (n_args + 1) - 1 # pop args + self from stack and push result
     end
     
     # Generates a stub for a method. For example:
@@ -228,7 +211,7 @@ STUB
       
       compile_method name, iseq
       
-      val = tpl("defineclass(#{define_type})", name: name, zuper: zuper[1], cbase: zuper[1])
+      val = tpl("defineclass(#{define_type})", name: name, zuper: zuper[1], cbase: cbase[1])
       val = "#{name}(#{val})"
       rsp.push(GeneratorStack::RubyObjectVar) do
         val
@@ -243,6 +226,34 @@ STUB
       puts "putspecialobject not implemented"
     end
   
+  # YARV OPT
+    def yarv_opt_lt ic
+      exec rsp.commit
+      rsp.dec 2
+      rsp.push nil do
+        "((SIGNED_VALUE)#{@rsp} < (SIGNED_VALUE)#{@rsp+1}) ? Qtrue : Qfalse"
+      end
+      exec rsp.commit
+    end
+    
+    def yarv_opt_minus ic
+      exec rsp.commit
+      rsp.dec 2
+      rsp.push nil do
+        "LONG2FIX(FIX2LONG(#{@rsp}) - FIX2LONG(#{@rsp+1}))"
+      end
+      exec rsp.commit
+    end
+    
+    def yarv_opt_plus ic
+      exec rsp.commit
+      rsp.dec 2
+      rsp.push nil do
+        "LONG2FIX(FIX2LONG(#{@rsp}) + FIX2LONG(#{@rsp+1}))"
+      end
+      exec rsp.commit
+    end
+    
   # TODO methods
     def yarv_trace i
       
@@ -268,7 +279,7 @@ STUB
         recvr = recvr[1]
       end
       if name.kind_of? Symbol
-        rsp.push(GeneratorStack::RubyObjectVar) do |rsp|
+        rsp.push(GeneratorStack::RubyObjectVar) do
           "rb_const_get_from(#{recvr}, rb_intern(\"#{name}\"))"
         end
       else

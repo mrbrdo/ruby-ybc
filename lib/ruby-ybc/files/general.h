@@ -1,7 +1,8 @@
 #include <ruby.h>
 
 #define RB_ENTER(stack_reserve, local_size) \
-	VALUE sp[stack_reserve];\
+  VALUE sp[stack_reserve];\
+  int rsp = 0;\
 	stack_cache_top->size = local_size*8;
 //#define PTR_CAST_DEREF(ptr, cast) *(cast *)((uintptr_t)(ptr))
 //#define PTR_MCAST_DEREF(ptr, math, cast) *(cast *)((uintptr_t)(ptr)math)
@@ -9,7 +10,7 @@
 //#define GET_SP(var) asm("movq %%rsp, %0":"=m"(var))
 //#define GET_BP(var) asm("movq %%rbp, %0":"=m"(var))
 #define RB_LEAVE(stack_top) \
-	return sp[stack_top];
+	return stack_top;
 
 //#define RB_GET_SP(var, sp) asm("leaq -" #sp "(%%rbp), %0":"=r"(var))
 
@@ -59,4 +60,7 @@ typedef union nonabi_union {
 // arg8: [rsp+8]
 // arg9: [rsp+16]
 // ...
+
+extern VALUE rb_cNativeProc;
+VALUE rb_new_native_proc(VALUE(*func)(ANYARGS), int argc, uintptr_t locals_ptr, int size);
 

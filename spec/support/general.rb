@@ -9,7 +9,13 @@ def compiled_example name
   str = str.sub("\n", "C\n")
   opts = {
     :inline_const_cache => false, # no use to us, it only speeds up interpreter
-    :peephole_optimization => false, :tailcall_optimization => false, :specialized_instruction => false, :operands_unification => false, :instructions_unification => false, :stack_caching => false, :debug_level => 0}
+    :peephole_optimization => true,
+    :tailcall_optimization => false,
+    :specialized_instruction => true,
+    :operands_unification => false,
+    :instructions_unification => false,
+    :stack_caching => false,
+    :debug_level => 0}
   iseq = RubyVM::InstructionSequence::compile(str, "#{name}.c", "<compiled>", 1, opts)
 
   begin

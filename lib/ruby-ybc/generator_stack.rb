@@ -6,10 +6,11 @@ module RubyYbc
     class SpecialObjectVar ; end
     class RubyObjectVar ; end
     attr_reader :ptr
-    def initialize(max)
+    attr_reader :pending
+    def initialize(generator, max)
       @max = max
-      @ptr = -1
       @pending = []
+      @generator = generator
     end
   
     def push obj, *args, &block
@@ -42,43 +43,32 @@ module RubyYbc
     end
     
     def inc how_much = 1
-      @ptr += how_much
+      @generator.exec "  rsp+=#{how_much};"
     end
     
     def dec how_much = 1
-      @ptr -= how_much
+      @generator.exec "  rsp-=#{how_much};"
     end
     
     def commit
       r = []
-      @ptr += @pending.count
-      ptr = @ptr
       while !@pending.empty?
         obj = pop
-        r.push "  YARV_PUTOBJECT(#{obj[1]}, #{ptr});"
-        ptr -= 1
+        r.push "  YARV_PUTOBJECT(#{obj[1]}, sp[rsp++]);"
       end
       r.reverse.join("\n")
     end
     
-    def <(val)
-      @ptr < val
-    end
-    
-    def >(val)
-      @ptr > val
-    end
-    
     def -(val)
-      @ptr - val
+      "sp[rsp-#{val}]"
     end
     
     def +(val)
-      @ptr + val
+      "sp[rsp+#{val}]"
     end
     
     def to_s
-      @ptr.to_s
+      "sp[rsp]"
     end
   end
 end

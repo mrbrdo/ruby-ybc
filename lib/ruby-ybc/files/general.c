@@ -5,6 +5,7 @@
 	#define false 0
 #endif
 
+// STACK CACHE
 rb_stack_t *stack_cache;
 rb_stack_t *stack_cache_top;
 rb_stack_t *current_stack;
@@ -31,7 +32,13 @@ void stack_destroying() {
 			:"=m"(current_stack->bp):"m"(current_stack->size));
 }
 
-void eval_defineclass(const char* name)
-{
-	
+// NATIVE PROC
+VALUE rb_cNativeProc;
+
+VALUE rb_new_native_proc(VALUE(*func)(ANYARGS), int argc, uintptr_t locals_ptr, int size) {
+	VALUE result = rb_funcall(rb_cNativeProc, rb_intern("new"), 0);
+	rb_define_singleton_method(result, "call", func, argc);
+	rb_iv_set(result, "@locals_ptr", LL2NUM(locals_ptr));
+	rb_iv_set(result, "@locals_size", INT2NUM(size));
+	return result;
 }

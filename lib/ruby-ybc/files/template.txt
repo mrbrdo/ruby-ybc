@@ -2,16 +2,6 @@
 #include "general.h"
 #include "instr.h"
 
-VALUE rb_cNativeProc;
-
-VALUE rb_new_native_proc(VALUE(*func)(ANYARGS), int argc, uintptr_t locals_ptr, int size) {
-	VALUE result = rb_funcall(rb_cNativeProc, rb_intern("new"), 0);
-	rb_define_singleton_method(result, "call", func, argc);
-	rb_iv_set(result, "@locals_ptr", LL2NUM(locals_ptr));
-	rb_iv_set(result, "@locals_size", INT2NUM(size));
-	return result;
-}
-
 #functions_section
 
 void Init_#ext_name()

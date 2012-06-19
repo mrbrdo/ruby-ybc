@@ -4,7 +4,7 @@
   @j idx で指定されたローカル変数をスタックに置く。
  */
 #define YARV_GETLOCAL(var, sloc) \
-	sp[sloc] = var.d
+	sloc = var.d
 
 /**
   @c variable
@@ -12,7 +12,7 @@
   @j idx で指定されたローカル変数を val に設定する。
  */
 #define YARV_SETLOCAL(var, sloc) \
-	var.d = sp[sloc]
+	var.d = sloc
 	
 /**
   @c put
@@ -28,7 +28,7 @@ putstring
     val = rb_str_resurrect(str);
 }*/
 #define YARV_PUTSTRING(str, sloc) \
-  sp[sloc] = rb_str_new2(str)
+  sloc = rb_str_new2(str)
 	
 /**
   @c method/iterator
@@ -83,7 +83,7 @@ To pass a block, it has to be a proc (rb_block_proc() will make proc from block 
 */
 //(op_id, op_argc, blockiseq, op_flag, ic)
 #define YARV_SEND(stack_top, stack_result, op_cstr, ...) \
-  sp[stack_result] = rb_funcall(sp[stack_result], rb_intern(op_cstr), __VA_ARGS__);
+  stack_result = rb_funcall(stack_result, rb_intern(op_cstr), __VA_ARGS__)
 
 /**
   @c put
@@ -101,7 +101,7 @@ putobject
 
 }*/
 #define YARV_PUTOBJECT(obj, sloc) \
-	sp[sloc] = obj
+	sloc = obj
 /**
   @c put
   @e put self.
@@ -139,3 +139,4 @@ getdynamic
     }*/
 #define YARV_GETDYNAMIC(idx, level, sloc) \
   YARV_PUTOBJECT(*(VALUE *)(NUM2LL(rb_iv_get(self.d, "@locals_ptr"))+(idx-1)*8), sloc);
+  
