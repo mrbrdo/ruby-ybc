@@ -1,0 +1,26 @@
+#include <ruby/ruby.h>
+#include "general.h"
+#include "instr.h"
+
+VALUE rb_cNativeProc;
+
+VALUE rb_new_native_proc(VALUE(*func)(ANYARGS), int argc, uintptr_t locals_ptr, int size) {
+	VALUE result = rb_funcall(rb_cNativeProc, rb_intern("new"), 0);
+	rb_define_singleton_method(result, "call", func, argc);
+	rb_iv_set(result, "@locals_ptr", LL2NUM(locals_ptr));
+	rb_iv_set(result, "@locals_size", INT2NUM(size));
+	return result;
+}
+
+#functions_section
+
+void Init_locals()
+{
+  VALUE toplevel_object = rb_eval_cmd(rb_str_new2("self"), Qnil, 0);
+  stack_cache = malloc(100 * sizeof(struct rb_stack_struct));
+  stack_cache_top = stack_cache;
+
+  rb_cNativeProc = rb_define_class("NativeProc", rb_cObject);
+  
+  toplevel_function(toplevel_object);
+}
