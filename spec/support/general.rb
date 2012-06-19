@@ -7,7 +7,10 @@ def compiled_example name
   
   str = File::read("#{base_dir}/spec/examples/#{name}.rb")
   str = str.sub("\n", "C\n")
-  iseq = RubyVM::InstructionSequence::compile(str)
+  opts = {
+    :inline_const_cache => false, # no use to us, it only speeds up interpreter
+    :peephole_optimization => false, :tailcall_optimization => false, :specialized_instruction => false, :operands_unification => false, :instructions_unification => false, :stack_caching => false, :debug_level => 0}
+  iseq = RubyVM::InstructionSequence::compile(str, "#{name}.c", "<compiled>", 1, opts)
 
   begin
     cg = CodeGenerator.new("toplevel_function", iseq)

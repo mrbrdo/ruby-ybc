@@ -30,3 +30,8 @@ void stack_destroying() {
 			"rep movsq;"
 			:"=m"(current_stack->bp):"m"(current_stack->size));
 }
+
+void eval_defineclass(const char* name)
+{
+	
+}

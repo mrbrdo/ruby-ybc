@@ -78,13 +78,11 @@ class Preprocessor
   
   def proc_definitions
     replace_sequence(
-      [:getinlinecache, "*"],
+      [:putnil],
       [:getconstant, :Proc],
-      [:setinlinecache, "*"],
-      Symbol,
       [:send, :new, "+"]) do |found|
       [
-        [:custom_newproc, 0, found[4][3]]
+        [:custom_newproc, 0, found[2][3]]
         ]
     end
   end

@@ -4,6 +4,7 @@ require 'active_support/core_ext'
 require 'pry'
 require_relative '../lib/ruby-ybc/code_generator'
 require_relative '../lib/ruby-ybc/extension_generator'
+include RubyYbc
 
 Spork.prefork do
   # Loading more in this block will cause your tests to run faster. However,

@@ -1,250 +1,310 @@
 require_relative './preprocessor'
-class CodeGenerator
-  attr_reader :code
-  attr_reader :iseq
-  def initialize func_name, iseq, parent_iseq = nil
-    iseq = iseq.to_a unless @iseq.kind_of? Array
-    @iseq = iseq.dup
-    @iseq = Preprocessor.new(@iseq).iseq
-    @func_name = func_name.to_s
-    @stack_max = @iseq[4][:stack_max]
-    @local_size = @iseq[4][:local_size]
-    @defined_blocks = 0
-    @rsp = -1 # some space for function
-    @parent_iseq = parent_iseq
-    @code = ""
-    prologue
-    begin
-      process
-    rescue StandardError => e
-      binding.pry
+require_relative './generator_stack'
+module RubyYbc
+  class CodeGenerator
+    attr_reader :code
+    attr_reader :iseq
+    attr_reader :rsp
+    def initialize func_name, iseq, parent_iseq = nil
+      iseq = iseq.to_a unless @iseq.kind_of? Array
+      @iseq = iseq.dup
+      @iseq = Preprocessor.new(@iseq).iseq
+      @func_name = func_name.to_s
+      @stack_max = @iseq[4][:stack_max]
+      @local_size = @iseq[4][:local_size]
+      @defined_blocks = 0
+      @rsp = GeneratorStack.new(@stack_max)
+      @parent_iseq = parent_iseq
+      @code = ""
+      prologue
+      begin
+        process
+      rescue StandardError => e
+        puts e.message
+        puts e.backtrace
+        binding.pry
+      end
     end
-  end
-  
-  def inc_rsp qwords = 1
-    @rsp += qwords
-  end
-  
-  def dec_rsp qwords = 1
-    @rsp -= qwords
-  end
-  
-  def prologue
-    head = "VALUE #{@func_name}_impl(nabi_t self"+(2..@local_size).map{|i| ", nabi_t v#{i}"}.join+")";
-    exec "#{head} __attribute__((noinline));"
-    exec "#{head} {"
-    exec "  RB_ENTER(#{@stack_max}, #{@local_size});"
-  end
-  
-  def epilogue
-  	exec "  RB_LEAVE(#{@rsp});"
-  	exec "}"
-  end
-  
-  def self.convert_object(obj)
-    if obj.kind_of? Fixnum
-      "INT2NUM(#{obj})"
-    elsif obj.kind_of? Symbol
-      "ID2SYM(rb_intern(\"#{obj}\"))"
-    else
-      raise "Don't know how to parse #{obj.class}"
+    
+    def prologue
+      head = "VALUE #{@func_name}_impl(nabi_t self"+(2..@local_size).map{|i| ", nabi_t v#{i}"}.join+")";
+      exec "#{head} __attribute__((noinline));"
+      exec "#{head} {"
+      exec "  RB_ENTER(#{@stack_max}, #{@local_size});"
     end
-  end
   
-  def yarv_putobject obj, do_convert = true # do_convert so I can reuse this
-    @last_putobject = obj
-    inc_rsp
-    obj = self.class.convert_object(obj) if do_convert
-    exec "  YARV_PUTOBJECT(#{obj}, #{@rsp});"
-  end
-  
-  def yarv_opt_plus ic
-    exec "  YARV_PUTOBJECT(LONG2FIX(
-      FIX2LONG(sp[#{@rsp}]) +
-      FIX2LONG(sp[#{@rsp-1}]), #{@rsp-1});"
-    dec_rsp
-  end
-  
-  def yarv_setlocal idx
-    exec "  YARV_SETLOCAL(v#{idx}, #{@rsp});"
-    dec_rsp
-  end
-  
-  def yarv_getlocal idx
-    inc_rsp
-    exec "  YARV_GETLOCAL(v#{idx}, #{@rsp});"
-  end
-  
-  def yarv_getdynamic idx, scope
-    inc_rsp
-    exec "  YARV_GETDYNAMIC(#{idx}, #{scope}, #{@rsp});"
-  end
-  
-  def yarv_putself
-    if @iseq[9] == :block
-      yarv_getdynamic(1, 1)
-    else
-      inc_rsp
-      exec "  YARV_PUTSELF(#{@rsp});"
+    def epilogue
+      exec rsp.commit
+      if @rsp < 0
+        if @rsp == -1
+          puts "WARNING: Stack pointer is #{@rsp}. Empty function?"
+        else
+          raise "Something went wrong with stack pointer."
+        end
+        @rsp = 0
+      end
+    	exec "  RB_LEAVE(#{@rsp});"
+    	exec "}"
     end
-  end
   
-  def yarv_putstring str
-    inc_rsp
-    exec "  YARV_PUTSTRING(\"#{str}\", #{@rsp});"
-  end
-  
-  def yarv_putnil
-    yarv_putobject "Qnil", false
-  end
-  
-  def yarv_putiseq iseq
-    @last_putiseq = iseq
-  end
-  
-  def yarv_send op_id, n_args, blockptr, flags, ic
-    if op_id == :"core#define_singleton_method"
-      yarv_custom_defmethod @last_putobject, @last_putiseq
-      @last_putiseq = nil
-      return
+    def yarv_putobject obj
+      if obj.kind_of? Fixnum
+        rsp.push(obj) do
+          "LL2NUM(#{obj})"
+        end
+      elsif obj.kind_of? Symbol
+        rsp.push(obj) do
+          "ID2SYM(rb_intern(\"#{obj}\"))"
+        end
+      else
+        raise "Don't know how to parse #{obj.class}"
+      end
     end
-    raise "putiseq not used!" unless @last_putiseq.nil?
-    # compiler optimizes and doesn't save local variables, so must refresh
-    exec '  asm(""::'+(2..@local_size).map{|i|"\"m\"(v#{i})"}.join(",")+'); // refresh vars'
-    exec "  YARV_SEND(#{@rsp}, ", false
-    # block
-    unless blockptr.nil?
-      @defined_blocks += 1
-      compile_method "#{@func_name}_block#{@defined_blocks}", blockptr
-    end
-    exec "#{@rsp-n_args}, \"#{op_id}\", #{n_args}" +
-      (0...n_args).map{|i| ", sp[#{@rsp-i}]"}.join + ");"
-    exec '  asm("":'+(2..@local_size).map{|i|"\"=m\"(v#{i})"}.join(",")+'); // refresh vars'
-    dec_rsp (n_args + 1) # pop args + self from stack
-    inc_rsp 1 # push result
-  end
   
-  def stub
-    argc = @iseq[4][:arg_size]
-    args = (1..argc).map{|i| ", VALUE arg#{i}"}.join
+    def yarv_opt_plus ic
+      exec rsp.commit
+      exec "  YARV_PUTOBJECT(LONG2FIX(
+        FIX2LONG(sp[#{@rsp}]) +
+        FIX2LONG(sp[#{@rsp-1}]), #{@rsp-1});"
+      rsp.dec
+    end
+  
+    def yarv_setlocal idx
+      exec rsp.commit
+      exec "  YARV_SETLOCAL(v#{idx}, #{@rsp});"
+      rsp.dec
+    end
+    
+    def yarv_getlocal idx
+      rsp.push(GeneratorStack::LocalVar, idx) do
+        "v#{idx}.d"
+      end
+    end
+  
+    def yarv_getdynamic idx, scope
+      exec rsp.commit
+      rsp.inc
+      exec "  YARV_GETDYNAMIC(#{idx}, #{scope}, #{@rsp});"
+    end
+  
+    def yarv_putself
+      if @iseq[9] == :block
+        exec rsp.commit
+        yarv_getdynamic(1, 1)
+      else
+        rsp.push(GeneratorStack::SelfVar) do
+          "self.d"
+        end
+      end
+    end
+  
+    def yarv_putstring str
+      rsp.push(str) do
+        "rb_str_new2(\"#{str}\")"
+      end
+    end
+  
+    def yarv_putnil
+      rsp.push(nil) do
+        "Qnil"
+      end
+    end
+  
+    def yarv_putiseq iseq
+      rsp.push(GeneratorStack::IseqVar) do
+        iseq
+      end
+    end
+  
+    def yarv_send op_id, n_args, blockptr, flags, ic
+      if op_id == :"core#define_singleton_method"
+        iseq = rsp.pop_lucky
+        name = rsp.pop[0]
+        recvr = rsp.pop_lucky
+        dunno = rsp.pop_lucky
+        exec rsp.commit
+        return core_define_singleton_method name, iseq
+      elsif op_id == :"core#define_method"
+        iseq = rsp.pop_lucky
+        name = rsp.pop[0]
+        recvr = rsp.pop_lucky
+        dunno = rsp.pop_lucky
+        exec rsp.commit
+        return core_define_method name, iseq
+      end
+      raise "putiseq not used!" unless @last_putiseq.nil? # todo
+      exec rsp.commit
+      # compiler optimizes and doesn't save local variables, so must refresh
+      exec '  asm(""::'+(2..@local_size).map{|i|"\"m\"(v#{i})"}.join(",")+'); // refresh vars'
+      exec "  YARV_SEND(#{@rsp}, ", false
+      # block
+      unless blockptr.nil?
+        @defined_blocks += 1
+        compile_method "#{@func_name}_block#{@defined_blocks}", blockptr
+      end
+      exec "#{@rsp-n_args}, \"#{op_id}\", #{n_args}" +
+        (0...n_args).map{|i| ", sp[#{@rsp-i}]"}.join + ");"
+      exec '  asm("":'+(2..@local_size).map{|i|"\"=m\"(v#{i})"}.join(",")+'); // refresh vars'
+      rsp.dec (n_args + 1) # pop args + self from stack
+      rsp.inc 1 # push result
+    end
+    
+    # Generates a stub for a method. For example:
     # def met a, b, c
-    # locals d, e
+    #   d = e = 1234
     # a is local6
     # b is local5
     # c is local4
     # d,e are local3 and local2
     # there doesn't seem to be any local1 (probably reserved for self)
-    # func_impl(self, locals(2-x), ..., arg3, arg2, arg1)
-    casted_args = ["(nabi_t)(VALUE)(0)"] * (@local_size-argc-1)
-    casted_args += argc.downto(1).map{|i| "(nabi_t)(arg#{i})"}
-    casted_args.unshift("") unless casted_args.empty?
-    casted_args = casted_args.join(", ")
-    n_args = @local_size + 1 # locals + self
+    # func_impl(self, locals(2,3,4...), args(...,3,2,1))
+    def stub
+      argc = @iseq[4][:arg_size]
+      args = (1..argc).map{|i| ", VALUE arg#{i}"}.join
+      casted_args = ["(nabi_t)(VALUE)(0)"] * (@local_size-argc-1)
+      casted_args += argc.downto(1).map{|i| "(nabi_t)(arg#{i})"}
+      casted_args.unshift("") unless casted_args.empty?
+      casted_args = casted_args.join(", ")
+      n_args = @local_size + 1 # locals + self
 <<-STUB
 VALUE #{@func_name}(VALUE self#{args})
 {
   return #{@func_name}_impl((nabi_t)self#{casted_args});
 }
 STUB
-  end
-  
-  def yarv_leave
-    if @rsp != 0
-      puts "WARNING: Something weird with stack!"
     end
-    epilogue
-  end
   
-  def yarv_pop
-    dec_rsp
-  end
+    def yarv_leave
+      epilogue
+    end
   
-# Special stuff
+    def yarv_pop
+      rsp.pop
+    end
+  
+  # Special stuff
 
-  def yarv_custom_defmethod name, iseq
-    compile_method name, iseq
-    argc = iseq[4][:arg_size]
-    exec "  rb_define_singleton_method(self.d, \"#{name}\", #{name}, #{argc});"
-    @rsp -= 1
-    # TODO supposed to return something here
-  end
-  
-  def yarv_custom_defsmethod name, iseq
-    compile_method name, iseq
-    argc = iseq[4][:arg_size]
-    exec "  rb_define_singleton_method(self.d, \"#{name}\", #{name}, #{argc});"
-  end
-  
-  def yarv_custom_newproc argc, blockptr
-    @defined_blocks += 1
-    proc_name = "#{@func_name}_block#{@defined_blocks}"
-    compile_method proc_name, blockptr
-    yarv_putobject("rb_new_native_proc(#{proc_name}, #{argc}, (uintptr_t) &self, #{@local_size})", false)
-  end
-  
-  def yarv_defineclass name, iseq, todo
-    @rsp -= 1 # todo
-    compile_method name, iseq
-    yarv_putobject("#{name}(rb_define_class(\"#{name}\", rb_cObject))", false)
-  end
-  
-  def yarv_putspecialobject num
-    puts "putspecialobject not implemented"
-  end
-  
-# TODO methods
-  def yarv_trace i
-  end
-  
-  def yarv_invokeblock i, j
+    def core_define_singleton_method name, iseq
+      compile_method name, iseq
+      argc = iseq[4][:arg_size]
+      exec "  rb_define_singleton_method(self.d, \"#{name}\", #{name}, #{argc});"
+      # core#define_singleton_method always returns nil
+      rsp.push(nil) { "Qnil" }
+    end
     
-  end
-
-  def yarv_getinlinecache i, j
-
-  end
+    def core_define_method name, iseq
+      compile_method name, iseq
+      argc = iseq[4][:arg_size]
+      exec "  rb_define_method(self.d, \"#{name}\", #{name}, #{argc});"
+      # core#define_method always returns nil
+      rsp.push(nil) { "Qnil" }
+    end
   
-  def yarv_setinlinecache i
-
-  end
+    def yarv_custom_newproc argc, blockptr
+      @defined_blocks += 1
+      proc_name = "#{@func_name}_block#{@defined_blocks}"
+      compile_method proc_name, blockptr
+      rsp.push(GeneratorStack::RubyObjectVar) do
+        "rb_new_native_proc(#{proc_name}, #{argc}, (uintptr_t) &self, #{@local_size})"
+      end
+    end
   
-  def yarv_getconstant i
-
-  end
-# END TODO
+    def yarv_defineclass name, iseq, define_type
+      raise ArgumentError if rsp.pendingc < 2
+      
+      zuper = rsp.pop
+      zuper[1] = "rb_cObject" if zuper[0] == nil
+      cbase = rsp.pop
+      
+      compile_method name, iseq
+      
+      val = tpl("defineclass(#{define_type})", name: name, zuper: zuper[1], cbase: zuper[1])
+      val = "#{name}(#{val})"
+      rsp.push(GeneratorStack::RubyObjectVar) do
+        val
+      end
+      exec rsp.commit # have to commit because we are calling defineclass
+    end
   
-  def compile_method(name, iseq)
-    exec "  // Compiled method #{name.inspect}."
-    @code = CodeGenerator.new(name, iseq, @iseq).code_with_stub + "\n#{@code}"
-  end
+    def yarv_putspecialobject num
+      rsp.push(GeneratorStack::SpecialObjectVar) do
+        num
+      end
+      puts "putspecialobject not implemented"
+    end
   
-  def method_init_code
-    if @iseq[9] == :block
+  # TODO methods
+    def yarv_trace i
       
     end
-  end
   
-  def process
-    @iseq[13].each do |op|
-      next unless op.kind_of? Array
-      
-      op_display = op.map{|i| i.kind_of?(Array) ? "Array" : i.inspect}.join(", ")
-      op_display = "YARV " + op_display.sub(",", ":")
-      op_display = op_display.sub(":", "")
-      exec "  // #{op_display}"
-      name = op[0]
-      op = op.slice(1, op.count)
-      self.send("yarv_#{name}", *op)
+    def yarv_invokeblock i, j
+    
     end
-    code_with_stub
-  end
+
+    def yarv_getinlinecache i, j
+      raise "Disable inline cache."
+    end
+    def yarv_setinlinecache i
+      raise "Disable inline cache."
+    end
   
-  def code_with_stub
-    code + "\n" + stub
-  end
+    def yarv_getconstant name
+      recvr = rsp.pop
+      # todo handle if recvr is nil, look at vm_get_ev_const
+      if recvr[0].nil?
+        recvr = "rb_cObject" 
+      else
+        recvr = recvr[1]
+      end
+      if name.kind_of? Symbol
+        rsp.push(GeneratorStack::RubyObjectVar) do |rsp|
+          "rb_const_get_from(#{recvr}, rb_intern(\"#{name}\"))"
+        end
+      else
+        raise "Don't know constant type #{name.class}"
+      end
+    end
+  # END TODO
   
-  def exec(str,newline=true)
-    @code += str
-    @code += "\n" if newline
+    def compile_method(name, iseq)
+      exec "  // Compiled method #{name.inspect}."
+      @code = CodeGenerator.new(name, iseq, @iseq).code_with_stub + "\n#{@code}"
+    end
+  
+    def process
+      @iseq[13].each do |op|
+        next unless op.kind_of? Array
+      
+        op_display = op.map{|i| i.kind_of?(Array) ? "Array" : i.inspect}.join(", ")
+        op_display = "YARV " + op_display.sub(",", ":")
+        op_display = op_display.sub(":", "")
+        exec "  // #{op_display}"
+        name = op[0]
+        op = op.slice(1, op.count)
+        self.send("yarv_#{name}", *op)
+      end
+      code_with_stub
+    end
+  
+    def code_with_stub
+      code + "\n" + stub
+    end
+  
+    def exec(str,newline=true)
+      @code += str
+      @code += "\n" if newline
+    end
+    
+    def tpl(name, vars)
+      @tpl_file ||= File.read(File.expand_path("../instr.c", __FILE__))
+      @tpl_file =~ Regexp.new("^- #{Regexp.escape(name)}:\s*([^\\-]*)", Regexp::MULTILINE)
+      raise "Can't find template for instruction #{name}." if $1.nil?
+      result = $1.strip
+      vars.each_pair do |k,v|
+        result.gsub!("::#{k}", v.to_s)
+      end
+      result
+    end
   end
 end
