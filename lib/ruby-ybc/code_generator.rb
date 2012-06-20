@@ -15,6 +15,7 @@ module RubyYbc
       @defined_blocks = 0
       @rsp = GeneratorStack.new(self, @stack_max)
       @parent_iseq = parent_iseq
+      @cbase = {:methods => {func_name.to_s => "#{func_name}_impl("}}
       @code = ""
       prologue
       begin
@@ -128,17 +129,23 @@ module RubyYbc
       end
       raise "putiseq not used!" unless @last_putiseq.nil? # todo
       exec rsp.commit
-      # compiler optimizes and doesn't save local variables, so must refresh
-      exec '  asm(""::'+(2..@local_size).map{|i|"\"m\"(v#{i})"}.join(",")+'); // refresh vars'
-      exec "  YARV_SEND(#{@rsp-1}, ", false
-      # block
-      unless blockptr.nil?
-        @defined_blocks += 1
-        compile_method "#{@func_name}_block#{@defined_blocks}", blockptr
+      
+      if @cbase[:methods].has_key?(op_id.to_s)
+        exec "  YARV_PUTOBJECT(" + @cbase[:methods][op_id.to_s] + "(nabi_t)self.d"
+        exec (0...n_args).map{|i| ", (nabi_t)#{@rsp-(i+1)}"}.join + "), #{@rsp-(n_args+1)});"
+      else
+        # compiler optimizes and doesn't save local variables, so must refresh
+        exec '  asm(""::'+(2..@local_size).map{|i|"\"m\"(v#{i})"}.join(",")+'); // refresh vars'
+        exec "  YARV_SEND(#{@rsp-1}, ", false
+        # block
+        unless blockptr.nil?
+          @defined_blocks += 1
+          compile_method "#{@func_name}_block#{@defined_blocks}", blockptr
+        end
+        exec "#{@rsp-(n_args+1)}, \"#{op_id}\", #{n_args}"
+        exec (0...n_args).map{|i| ", #{@rsp-(i+1)}"}.join + ");"
+        exec '  asm("":'+(2..@local_size).map{|i|"\"=m\"(v#{i})"}.join(",")+'); // refresh vars'
       end
-      exec "#{@rsp-(n_args+1)}, \"#{op_id}\", #{n_args}" +
-        (0...n_args).map{|i| ", #{@rsp-(i+1)}"}.join + ");"
-      exec '  asm("":'+(2..@local_size).map{|i|"\"=m\"(v#{i})"}.join(",")+'); // refresh vars'
       rsp.dec (n_args + 1) - 1 # pop args + self from stack and push result
     end
     
@@ -178,6 +185,7 @@ STUB
   # Special stuff
 
     def core_define_singleton_method name, iseq
+      @cbase[:methods][name.to_s] = "#{name}_impl("
       compile_method name, iseq
       argc = iseq[4][:arg_size]
       exec "  rb_define_singleton_method(self.d, \"#{name}\", #{name}, #{argc});"
