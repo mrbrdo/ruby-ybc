@@ -1,0 +1,21 @@
+-relocations: use array so it will be easy to find the right CALLs. then patch CALLs or array. in compiler maintain a hash of class => methods and all method count.
+
+optimizations:
+- dont cache stack if no blocks/procs detected
+- use Ruby GC to alloc/free stack cache (or use custom C code for NativeProc destructor +reference counting)
+- if a block is passed to a func without &block then it can still be converted to Proc if passed to another method with &block
+- push/pop sequences use registers directly
+
+-void testblock_impl(nabi_t self, nabi_t v1, nabi_t v2, nabi_t v3) __attribute__((naked));
+-asm("pushq %rbp; movq %rsp, %rbp");\
+
+
+- use ptr (like winapi) for methods
+- put a memory blob in a Ruby object, where we store method pointers. actually probably need to use a hash (because methods can be added at runtime), but ptr can be stored directly as long long. we can use pointer to hash (or probably VALUE) so we don't need to call ruby every time we jmp. if method calls itself we CANNOT optimize to call directly.
+- class reopen in same file... must use hashes for method names
+- eval: compile new extension, in ruby object add something like "eval_target", where we put self, maybe need also stack?
+- make NativeProc behave exactly like Proc
+
+
+- ruby hash
+-patcher function, finds method and patches return address, adds return address to invalidation hash

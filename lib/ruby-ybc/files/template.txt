@@ -1,5 +1,6 @@
 #include <ruby/ruby.h>
 #include "general.h"
+#include "methods.h"
 #include "instr.h"
 
 #functions_section
@@ -7,10 +8,15 @@
 void Init_#ext_name()
 {
   VALUE toplevel_object = rb_eval_cmd(rb_str_new2("self"), Qnil, 0);
+  VALUE rb_cRubyYbc;
   stack_cache = malloc(100 * sizeof(struct rb_stack_struct));
   stack_cache_top = stack_cache;
 
   rb_cNativeProc = rb_define_class("NativeProc", rb_cObject);
-  
+
+  rb_cRubyYbc = rb_define_module("RubyYbc");
+
+  InitMethods();
+  append_method_to_dispatch_table(CLASS_OF(toplevel_object), "toplevel_function", (uintptr_t)toplevel_function_impl);
   toplevel_function(toplevel_object);
 }

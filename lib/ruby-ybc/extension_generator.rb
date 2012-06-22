@@ -17,6 +17,40 @@ module RubyYbc
       end
       build
     end
+
+    def self.create_from_str code
+      require_relative './code_generator'
+      name = "test"
+      base_dir = File::expand_path("../../../", __FILE__)
+
+      opts = {
+        :inline_const_cache => false, # no use to us, it only speeds up interpreter
+        :peephole_optimization => true,
+        :tailcall_optimization => false,
+        :specialized_instruction => true,
+        :operands_unification => false,
+        :instructions_unification => false,
+        :stack_caching => false,
+        :debug_level => 0}
+      iseq = RubyVM::InstructionSequence::compile(code, "<compiled>", "<compiled>", 1, opts)
+
+      begin
+        cg = RubyYbc::CodeGenerator.new("toplevel_function", iseq)
+      rescue StandardError => e
+        puts e.message
+        pp cg.iseq.to_a
+        exit
+      end
+      
+      g = RubyYbc::ExtensionGenerator.new(name, "#{base_dir}/tmp/#{name}")
+      g.create_extension(cg.code_with_stub)
+      
+      File.open("#{base_dir}/tmp/#{name}/src.rb", "w") do |f|
+        f.write(code)
+      end
+      
+      raise "Compile unsuccessful!" unless g.build
+    end
     
     def build
       FileUtils.cd(@path) do
