@@ -4,10 +4,8 @@ module FibonacciRecursive
   end
   
   def self.run
-    t = Time.now.to_i
+    t = Time.now
     puts self.fib(29)
-    #puts "Time: " + (Time.now.send(:"-", t)).to_s
-    puts "Time: "
-    puts (Time.now.to_i - t).to_s
+    puts "Time: " + (Time.now - t).to_s
   end
 end
