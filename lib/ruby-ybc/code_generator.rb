@@ -170,19 +170,19 @@ module RubyYbc
     def yarv_opt_minus ic
       exec rsp.commit
       rsp.dec 2
-      rsp.push nil do
-        "LONG2FIX(FIX2LONG(#{@rsp}) - FIX2LONG(#{@rsp+1}))"
-      end
+      rsp.push tpl("opt_minus", right: rsp.pop_lucky, left: rsp.pop_lucky)
       exec rsp.commit
     end
     
     def yarv_opt_plus ic
       exec rsp.commit
       rsp.dec 2
-      rsp.push nil do
-        "LONG2FIX(FIX2LONG(#{@rsp}) + FIX2LONG(#{@rsp+1}))"
-      end
+      rsp.push tpl("opt_plus", right: rsp.pop_lucky, left: rsp.pop_lucky)
       exec rsp.commit
+      #rsp.dec 2
+      #rsp.push nil do
+      #  "LONG2FIX(FIX2LONG(#{@rsp}) + FIX2LONG(#{@rsp+1}))"
+      #end
     end
     
   # TODO methods

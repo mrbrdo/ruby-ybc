@@ -139,4 +139,3 @@ getdynamic
     }*/
 #define YARV_GETDYNAMIC(idx, level, sloc) \
   YARV_PUTOBJECT(*(VALUE *)(NUM2LL(rb_iv_get(self.d, "@locals_ptr"))+(idx-1)*8), sloc);
-  

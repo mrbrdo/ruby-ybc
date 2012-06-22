@@ -64,3 +64,5 @@ typedef union nonabi_union {
 extern VALUE rb_cNativeProc;
 VALUE rb_new_native_proc(VALUE(*func)(ANYARGS), int argc, uintptr_t locals_ptr, int size);
 
+VALUE yarv_opt_plus(VALUE a, VALUE b);
+VALUE yarv_opt_minus(VALUE a, VALUE b);

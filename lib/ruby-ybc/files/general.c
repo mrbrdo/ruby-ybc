@@ -42,3 +42,23 @@ VALUE rb_new_native_proc(VALUE(*func)(ANYARGS), int argc, uintptr_t locals_ptr, 
 	rb_iv_set(result, "@locals_size", INT2NUM(size));
 	return result;
 }
+
+#define FIXNUM_2_P(a, b) ((a) & (b) & 1)
+
+VALUE yarv_opt_plus(VALUE a, VALUE b) {
+	if (FIXNUM_2_P(a, b) // TODO: && BASIC_OP_UNREDEFINED_P(BOP_PLUS,FIXNUM_REDEFINED_OP_FLAG)
+		) {
+		return LONG2FIX(FIX2LONG(a) + FIX2LONG(b)); // TODO
+	} else {
+		return rb_funcall(a, rb_intern("+"), 1, b);
+	}
+}
+
+VALUE yarv_opt_minus(VALUE a, VALUE b) {
+	if (FIXNUM_2_P(a, b) // TODO: && BASIC_OP_UNREDEFINED_P(BOP_PLUS,FIXNUM_REDEFINED_OP_FLAG)
+		) {
+		return LONG2FIX(FIX2LONG(a) - FIX2LONG(b)); // TODO
+	} else {
+		return rb_funcall(a, rb_intern("-"), 1, b);
+	}
+}

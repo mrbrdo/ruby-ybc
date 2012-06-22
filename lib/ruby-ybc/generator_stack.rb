@@ -11,6 +11,7 @@ module RubyYbc
       @max = max
       @pending = []
       @generator = generator
+      @pop_counter = 0
     end
   
     def push obj, *args, &block
@@ -24,7 +25,8 @@ module RubyYbc
   
     def pop
       if @pending.empty?
-        dec
+        @pop_counter += 1
+        [nil, "sp[rsp-(#{@pop_counter})]"]
       else
         @pending.pop.tap do |i|
           if i[1].respond_to?(:call)
@@ -47,10 +49,12 @@ module RubyYbc
     end
     
     def dec how_much = 1
+      @pop_counter -= how_much
       @generator.exec "  rsp-=#{how_much};"
     end
     
     def commit
+      @pop_counter = 0
       r = []
       while !@pending.empty?
         obj = pop
