@@ -25,7 +25,7 @@ extern rb_stack_t *stack_cache_top;
 extern rb_stack_t *current_stack;
 
 void stack_created() __attribute__((naked));
-void stack_destroying() __attribute__((naked));//((always_inline));
+void stack_destroying() __attribute__((naked));
 
 
 #pragma pack(push)

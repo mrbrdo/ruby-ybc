@@ -60,7 +60,8 @@ module RubyYbc
         obj = pop
         r.push "  YARV_PUTOBJECT(#{obj[1]}, sp[rsp++]);"
       end
-      r.reverse.join("\n")
+      @generator.exec r.reverse.join("\n")
+      ""
     end
     
     def -(val)

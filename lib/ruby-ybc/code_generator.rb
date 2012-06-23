@@ -27,20 +27,6 @@ module RubyYbc
         binding.pry
       end
     end
-    
-    def prologue
-      head = "VALUE #{@func_name}_impl(nabi_t self"+(2..@local_size).map{|i| ", nabi_t v#{i}"}.join+")"
-      exec "typedef VALUE (*#{@func_name}_fptr)(nabi_t"+(2..@local_size).map{|i| ", nabi_t"}.join+");"
-      exec "#{head} __attribute__((noinline));"
-      exec "#{head} {"
-      exec "  RB_ENTER(#{@stack_max}, #{@local_size});"
-    end
-  
-    def epilogue
-      exec rsp.commit
-    	exec "  RB_LEAVE(#{@rsp-1});"
-    	exec "}"
-    end
   
     def yarv_putobject obj
       if obj.kind_of? Fixnum
@@ -57,18 +43,18 @@ module RubyYbc
     end
     
     def yarv_branchunless lab
-      exec rsp.commit
-      exec "  if (!RTEST(#{@rsp-1})) goto #{label_full_name(lab)};"
+      rsp.commit
+      exec tpl("branchunless", cond: (@rsp-1), lab: label_full_name(lab))
     end
     
     def yarv_jump lab
-      exec rsp.commit
-      exec "  goto #{label_full_name(lab)};"
+      rsp.commit
+      exec tpl("jump", lab: label_full_name(lab))
     end
   
     def yarv_setlocal idx
-      exec rsp.commit
-      exec "  YARV_SETLOCAL(v#{idx}, #{@rsp-1});"
+      rsp.commit
+      exec tpl("setlocal", local: "v#{idx}", stack: (@rsp-1))
       rsp.dec
     end
     
@@ -79,14 +65,14 @@ module RubyYbc
     end
   
     def yarv_getdynamic idx, scope
-      exec rsp.commit
+      rsp.commit
       rsp.inc
-      exec "  YARV_GETDYNAMIC(#{idx}, #{scope}, #{@rsp-1});"
+      exec tpl("getdynamic", idx: idx, scope: scope, stack: (@rsp-1))
     end
   
     def yarv_putself
       if @iseq[9] == :block
-        exec rsp.commit
+        rsp.commit
         yarv_getdynamic(1, 1)
       else
         rsp.push(GeneratorStack::SelfVar) do
@@ -135,19 +121,7 @@ module RubyYbc
       compile_method name, iseq
       
       val = tpl("defineclass(#{define_type})", name: name, zuper: zuper[1], cbase: cbase[1])
-      val = "VALUE tmp = #{val};"
-
-      exec "{"
-      exec val
-      exec "append_method_to_dispatch_table(tmp, \"#{name}\", (uintptr_t)#{name}_impl);"
-      exec "#{name}(tmp);"
-      exec "YARV_PUTOBJECT(tmp, sp[rsp++]);"
-      exec "}"
-      #val = "#{name}(#{val})"
-      #rsp.push(GeneratorStack::RubyObjectVar) do
-      #  val
-      #end
-      exec rsp.commit # have to commit because we are calling defineclass
+      exec tpl("defineclass_full", klass: val, name: name, stack: "sp[rsp++]")
     end
   
     def yarv_putspecialobject num
@@ -159,30 +133,25 @@ module RubyYbc
   
   # YARV OPT
     def yarv_opt_lt ic
-      exec rsp.commit
+      # todo
+      rsp.commit
       rsp.dec 2
-      rsp.push nil do
-        "((SIGNED_VALUE)#{@rsp} < (SIGNED_VALUE)#{@rsp+1}) ? Qtrue : Qfalse"
-      end
-      exec rsp.commit
+      rsp.push tpl("opt_lt", a: @rsp, b: (@rsp+1))
+      rsp.commit
     end
     
     def yarv_opt_minus ic
-      exec rsp.commit
+      rsp.commit
       rsp.dec 2
       rsp.push tpl("opt_minus", right: rsp.pop_lucky, left: rsp.pop_lucky)
-      exec rsp.commit
+      rsp.commit
     end
     
     def yarv_opt_plus ic
-      exec rsp.commit
+      rsp.commit
       rsp.dec 2
       rsp.push tpl("opt_plus", right: rsp.pop_lucky, left: rsp.pop_lucky)
-      exec rsp.commit
-      #rsp.dec 2
-      #rsp.push nil do
-      #  "LONG2FIX(FIX2LONG(#{@rsp}) + FIX2LONG(#{@rsp+1}))"
-      #end
+      rsp.commit
     end
     
   # TODO methods
@@ -229,12 +198,13 @@ module RubyYbc
   
     def process
       @iseq[13].each do |op|
-        
         if op.kind_of? Array
+          # display comment
           op_display = op.map{|i| i.kind_of?(Array) ? "Array" : i.inspect}.join(", ")
           op_display = "YARV " + op_display.sub(",", ":")
           op_display = op_display.sub(":", "")
           exec "  // #{op_display}"
+          # exec instruction
           name = op[0]
           op = op.slice(1, op.count)
           self.send("yarv_#{name}", *op)

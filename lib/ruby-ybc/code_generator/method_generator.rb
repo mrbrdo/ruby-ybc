@@ -47,6 +47,17 @@ module RubyYbc::MethodGenerator
     end
   end
 
+  def prologue
+    args = (2..@local_size).map{|i| ", nabi_t v#{i}"}.join
+    exec tpl("func_prologue", func_name: @func_name, args: args,
+      stack_max: @stack_max, local_size: @local_size)
+  end
+
+  def epilogue
+    exec rsp.commit
+    exec tpl("func_epilogue", ret: (@rsp-1))
+  end
+
   def yarv_custom_newproc argc, blockptr
     @defined_blocks += 1
     proc_name = "#{@func_name}_block#{@defined_blocks}"

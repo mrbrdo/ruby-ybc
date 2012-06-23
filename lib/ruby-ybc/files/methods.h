@@ -12,6 +12,6 @@ extern int func_ptr_cache_size;
   rb_define_singleton_method(on_obj, #name, name, argc);\
   append_method_to_dispatch_table(CLASS_OF(CLASS_OF(on_obj)), #name, (uintptr_t)map_to_func)
 
-uintptr_t method_dispatch_ptr(VALUE, const char *, int) __attribute__((always_inline));
+inline uintptr_t method_dispatch_ptr(VALUE, const char *, int);
 void append_method_to_dispatch_table(VALUE klass, const char *name, uintptr_t func);
 void InitMethods();
