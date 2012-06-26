@@ -137,7 +137,7 @@ module RubyYbc::MethodGenerator
   end
 
   def compile_method(name, iseq)
-    exec "  // Compiled method #{name.inspect}."
+    exec "// Compiled method #{name.inspect}."
     @code = RubyYbc::CodeGenerator.new(name, iseq, @iseq).code_with_stub + "\n#{@code}"
   end
 end

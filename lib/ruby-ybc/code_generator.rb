@@ -207,9 +207,9 @@ module RubyYbc
     
     def tpl(name, vars)
       @tpl_file ||= File.read(File.expand_path("../instr.c", __FILE__))
-      @tpl_file =~ Regexp.new("^- #{Regexp.escape(name)}:\s*([^\\-]*)", Regexp::MULTILINE)
+      @tpl_file =~ Regexp.new("^- #{Regexp.escape(name)}:\s*\n([^\\-]*)", Regexp::MULTILINE)
       raise "Can't find template for instruction #{name}." if $1.nil?
-      result = $1.strip
+      result = $1.rstrip
       vars.each_pair do |k,v|
         result.gsub!("::#{k}", v.to_s)
       end
