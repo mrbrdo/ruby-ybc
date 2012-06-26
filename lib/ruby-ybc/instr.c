@@ -5,7 +5,14 @@ VALUE ::func_name_impl(nabi_t self::args) {
   RB_ENTER(::stack_max, ::local_size);
 
 - func_epilogue:
-RB_LEAVE(::ret);
+  RB_LEAVE(::ret);
+}
+
+- method_stub:
+VALUE ::name(VALUE selfv::args)
+{
+  nabi_t self = (nabi_t) selfv;
+  return ::call_str(nabi_t)self::casted_args);
 }
 
 - defineclass(0):
@@ -29,6 +36,7 @@ rb_define_module("::name")
   append_method_to_dispatch_table(tmp, "::name", (uintptr_t)::name_impl);
   ::name(tmp);
   YARV_PUTOBJECT(tmp, ::stack);
+  rsp++;
 }
 
 - opt_plus:

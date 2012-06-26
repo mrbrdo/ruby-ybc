@@ -6,38 +6,38 @@ module RubyYbc::MethodGenerator
 
     base.func_handler :"core#define_method" do
       iseq = rsp.pop_lucky
-      name = rsp.pop[0]
+      name = rsp.pop[1]
       recvr = rsp.pop_lucky
       dunno = rsp.pop_lucky
-      exec rsp.commit
+      rsp.commit # TODO: recvr (dont commit here then)
 
       @cbase[:methods][name.to_s] = true
       compile_method name, iseq
       argc = iseq[4][:arg_size]
       # !!!  rb_define_method(rb_funcall(self.d, rb_intern("class"), 0), "met", met, 1);
       #TODO!!! (reciever!)
-      exec "  RYBC_DEFINE_METHOD(self.d, #{name}, #{name}_impl, #{argc});"
+      exec "RYBC_DEFINE_METHOD(self.d, #{name}, #{name}_impl, #{argc});"
 
       # core#define_method always returns nil
-      rsp.push(nil) { "Qnil" }
+      rsp.push("Qnil", nil)
     end
 
     base.func_handler :"core#define_singleton_method" do
       iseq = rsp.pop_lucky
-      name = rsp.pop[0]
+      name = rsp.pop[1]
       recvr = rsp.pop_lucky
       dunno = rsp.pop_lucky
-      exec rsp.commit
+      rsp.commit
 
       @cbase[:methods][name.to_s] = true
       compile_method name, iseq
       argc = iseq[4][:arg_size]
       # !!!  rb_define_method(rb_funcall(self.d, rb_intern("class"), 0), "met", met, 1);
       #TODO!!! (reciever!)
-      exec "  RYBC_DEFINE_SINGLETON_METHOD(self.d, #{name}, #{name}_impl, #{argc});"
+      exec "RYBC_DEFINE_SINGLETON_METHOD(self.d, #{name}, #{name}_impl, #{argc});"
 
       # core#define_singleton_method always returns nil
-      rsp.push(nil) { "Qnil" }
+      rsp.push("Qnil", nil)
     end
   end
 
@@ -51,23 +51,25 @@ module RubyYbc::MethodGenerator
     args = (2..@local_size).map{|i| ", nabi_t v#{i}"}.join
     exec tpl("func_prologue", func_name: @func_name, args: args,
       stack_max: @stack_max, local_size: @local_size)
+    @indent += 2
   end
 
   def epilogue
-    exec rsp.commit
+    rsp.commit
+    @indent -= 2
     exec tpl("func_epilogue", ret: (@rsp-1))
   end
 
   def yarv_custom_newproc argc, blockptr
     @defined_blocks += 1
     proc_name = "#{@func_name}_block#{@defined_blocks}"
-    exec rsp.commit
+    rsp.commit
     compile_method proc_name, blockptr
-    exec "  {"
-    exec "    VALUE tmp = rb_new_native_proc(#{proc_name}, #{argc}, (uintptr_t) &self, #{@local_size});"
-    exec "    append_method_to_dispatch_table(tmp, \"#{proc_name}\", (uintptr_t)#{proc_name}_impl);"
-    exec "    YARV_PUTOBJECT(tmp, sp[rsp++]);"
-    exec "  }"
+    exec "{"
+    exec "  VALUE tmp = rb_new_native_proc(#{proc_name}, #{argc}, (uintptr_t) &self, #{@local_size});"
+    exec "  append_method_to_dispatch_table(tmp, \"#{proc_name}\", (uintptr_t)#{proc_name}_impl);"
+    exec "  YARV_PUTOBJECT(tmp, sp[rsp++]);"
+    exec "}"
     #rsp.push(GeneratorStack::RubyObjectVar) do
     #  "rb_new_native_proc(#{proc_name}, #{argc}, (uintptr_t) &self, #{@local_size})"
     #end
@@ -91,23 +93,22 @@ module RubyYbc::MethodGenerator
       return call_func_handler(op_id)
     end
     raise "putiseq not used!" unless @last_putiseq.nil? # todo
-    exec rsp.commit
+    rsp.commit
     
     if @cbase[:methods].has_key?(op_id.to_s)
-      exec "  YARV_PUTOBJECT(" + get_func_call('self.d', op_id) + "(nabi_t)self.d"
+      exec "YARV_PUTOBJECT(" + get_func_call('self.d', op_id) + "(nabi_t)self.d", false
       exec (0...n_args).map{|i| ", (nabi_t)#{@rsp-(i+1)}"}.join + "), #{@rsp-(n_args+1)});"
     else
       # compiler optimizes and doesn't save local variables, so must refresh
-      exec '  asm(""::'+(2..@local_size).map{|i|"\"m\"(v#{i})"}.join(",")+'); // refresh vars'
-      exec "  YARV_SEND(#{@rsp-1}, ", false
+      exec 'REFRESH_LOCALS_TO_STACK('+(2..@local_size).map{|i|"\"m\"(v#{i})"}.join(",")+'); // refresh vars'
       # block
       unless blockptr.nil?
         @defined_blocks += 1
         compile_method "#{@func_name}_block#{@defined_blocks}", blockptr
       end
-      exec "#{@rsp-(n_args+1)}, \"#{op_id}\", #{n_args}"
+      exec "YARV_SEND(#{@rsp-1}, #{@rsp-(n_args+1)}, \"#{op_id}\", #{n_args}", false
       exec (0...n_args).map{|i| ", #{@rsp-(i+1)}"}.join + ");"
-      exec '  asm("":'+(2..@local_size).map{|i|"\"=m\"(v#{i})"}.join(",")+'); // refresh vars'
+      exec 'REFRESH_LOCALS_FROM_STACK('+(2..@local_size).map{|i|"\"=m\"(v#{i})"}.join(",")+'); // refresh vars'
     end
     rsp.dec (n_args + 1) - 1 # pop args + self from stack and push result
   end
@@ -130,13 +131,7 @@ module RubyYbc::MethodGenerator
     casted_args.unshift("") unless casted_args.empty?
     casted_args = casted_args.join(", ")
     n_args = @local_size + 1 # locals + self
-<<-STUB
-VALUE #{@func_name}(VALUE selfv#{args})
-{
-  nabi_t self = (nabi_t) selfv;
-  return #{func_call_str}(nabi_t)self#{casted_args});
-}
-STUB
+    tpl("method_stub", name: @func_name, args: args, call_str: func_call_str, casted_args: casted_args).join("\n")
   end
 
   def compile_method(name, iseq)

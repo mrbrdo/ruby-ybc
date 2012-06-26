@@ -18,6 +18,7 @@ module RubyYbc
       @parent_iseq = parent_iseq
       @cbase = {:methods => {func_name.to_s => "((#{func_name}_fptr)(method_dispatch_ptr(CLASS_OF(self.d), \"#{func_name}\")))("}}
       @code = ""
+      @indent = 0
       prologue
       begin
         process
@@ -30,13 +31,9 @@ module RubyYbc
   
     def yarv_putobject obj
       if obj.kind_of? Fixnum
-        rsp.push(obj) do
-          "LL2NUM(#{obj})"
-        end
+        rsp.push("LL2NUM(#{obj})", obj)
       elsif obj.kind_of? Symbol
-        rsp.push(obj) do
-          "ID2SYM(rb_intern(\"#{obj}\"))"
-        end
+        rsp.push("ID2SYM(rb_intern(\"#{obj}\"))", obj)
       else
         raise "Don't know how to parse #{obj.class}"
       end
@@ -44,7 +41,7 @@ module RubyYbc
     
     def yarv_branchunless lab
       rsp.commit
-      exec tpl("branchunless", cond: (@rsp-1), lab: label_full_name(lab))
+      exec tpl("branchunless", cond: "sp[--rsp]", lab: label_full_name(lab))
     end
     
     def yarv_jump lab
@@ -53,21 +50,17 @@ module RubyYbc
     end
   
     def yarv_setlocal idx
+      exec tpl("setlocal", local: "v#{idx}", stack: rsp.pop_lucky)
       rsp.commit
-      exec tpl("setlocal", local: "v#{idx}", stack: (@rsp-1))
-      rsp.dec
     end
     
     def yarv_getlocal idx
-      rsp.push(GeneratorStack::LocalVar, idx) do
-        "v#{idx}.d"
-      end
+      rsp.push("v#{idx}.d", GeneratorStack::LocalVar)
     end
   
     def yarv_getdynamic idx, scope
       rsp.commit
-      rsp.inc
-      exec tpl("getdynamic", idx: idx, scope: scope, stack: (@rsp-1))
+      exec tpl("getdynamic", idx: idx, scope: scope, stack: "sp[rsp++]")
     end
   
     def yarv_putself
@@ -75,28 +68,20 @@ module RubyYbc
         rsp.commit
         yarv_getdynamic(1, 1)
       else
-        rsp.push(GeneratorStack::SelfVar) do
-          "self.d"
-        end
+        rsp.push("self.d", GeneratorStack::SelfVar)
       end
     end
   
     def yarv_putstring str
-      rsp.push(str) do
-        "rb_str_new2(\"#{str}\")"
-      end
+      rsp.push("rb_str_new2(\"#{str}\")")
     end
   
     def yarv_putnil
-      rsp.push(nil) do
-        "Qnil"
-      end
+      rsp.push("Qnil", nil)
     end
   
     def yarv_putiseq iseq
-      rsp.push(GeneratorStack::IseqVar) do
-        iseq
-      end
+      rsp.push(iseq, GeneratorStack::IseqVar)
     end
 
     include RubyYbc::MethodGenerator
@@ -107,49 +92,42 @@ module RubyYbc
   
     def yarv_pop
       rsp.pop
+      rsp.commit # TODO necessary?
     end
   
   # Special stuff
   
     def yarv_defineclass name, iseq, define_type
-      raise ArgumentError if rsp.pendingc < 2
+      raise ArgumentError if rsp.pending.count < 2
       
       zuper = rsp.pop
-      zuper[1] = "rb_cObject" if zuper[0] == nil
+      zuper[0] = "rb_cObject" if zuper[1] == nil
       cbase = rsp.pop
       
       compile_method name, iseq
       
-      val = tpl("defineclass(#{define_type})", name: name, zuper: zuper[1], cbase: cbase[1])
-      exec tpl("defineclass_full", klass: val, name: name, stack: "sp[rsp++]")
+      val = tpl("defineclass(#{define_type})", name: name, zuper: zuper[0], cbase: cbase[0])
+      exec tpl("defineclass_full", klass: val.first, name: name, stack: rsp.to_s)
+      rsp.commit
     end
   
     def yarv_putspecialobject num
-      rsp.push(GeneratorStack::SpecialObjectVar) do
-        num
-      end
+      rsp.push(num, GeneratorStack::SpecialObjectVar)
       puts "putspecialobject not implemented"
     end
   
   # YARV OPT
     def yarv_opt_lt ic
-      # todo
-      rsp.commit
-      rsp.dec 2
-      rsp.push tpl("opt_lt", a: @rsp, b: (@rsp+1))
+      rsp.push tpl("opt_lt", b: rsp.pop_lucky, a: rsp.pop_lucky)
       rsp.commit
     end
     
     def yarv_opt_minus ic
-      rsp.commit
-      rsp.dec 2
       rsp.push tpl("opt_minus", right: rsp.pop_lucky, left: rsp.pop_lucky)
       rsp.commit
     end
     
     def yarv_opt_plus ic
-      rsp.commit
-      rsp.dec 2
       rsp.push tpl("opt_plus", right: rsp.pop_lucky, left: rsp.pop_lucky)
       rsp.commit
     end
@@ -173,15 +151,15 @@ module RubyYbc
     def yarv_getconstant name
       recvr = rsp.pop
       # todo handle if recvr is nil, look at vm_get_ev_const
-      if recvr[0].nil?
+      if recvr[1].nil?
         recvr = "rb_cObject" 
       else
-        recvr = recvr[1]
+        recvr = recvr[0]
       end
       if name.kind_of? Symbol
-        rsp.push(GeneratorStack::RubyObjectVar) do
-          "rb_const_get_from(#{recvr}, rb_intern(\"#{name}\"))"
-        end
+        rsp.push("rb_const_get_from(#{recvr}, rb_intern(\"#{name}\"))",
+          GeneratorStack::RubyObjectVar)
+        rsp.commit
       else
         raise "Don't know constant type #{name.class}"
       end
@@ -193,7 +171,7 @@ module RubyYbc
     end
     
     def label_now(lab)
-      exec "  #{label_full_name(lab)}:"
+      exec "#{label_full_name(lab)}:"
     end
   
     def process
@@ -203,7 +181,7 @@ module RubyYbc
           op_display = op.map{|i| i.kind_of?(Array) ? "Array" : i.inspect}.join(", ")
           op_display = "YARV " + op_display.sub(",", ":")
           op_display = op_display.sub(":", "")
-          exec "  // #{op_display}"
+          exec "// #{op_display}"
           # exec instruction
           name = op[0]
           op = op.slice(1, op.count)
@@ -219,9 +197,12 @@ module RubyYbc
       code + "\n" + stub
     end
   
-    def exec(str,newline=true)
-      @code += str
-      @code += "\n" if newline
+    def exec(input,newline=true)
+      stra = Array(input)
+      stra.each do |str|
+        @code += (" " * @indent) + str
+        @code += "\n" if newline
+      end
     end
     
     def tpl(name, vars)
@@ -232,7 +213,7 @@ module RubyYbc
       vars.each_pair do |k,v|
         result.gsub!("::#{k}", v.to_s)
       end
-      result
+      result.split("\n")
     end
   end
 end

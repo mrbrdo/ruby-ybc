@@ -48,6 +48,8 @@ typedef union nonabi_union {
 			"mov %%rax, %0":"=m"(result)::"rax","rsp")
 #define NONABI_CALL_ODD(func, n_params) asm("subq $8, %rsp; call _" #func "; addq $" #n_params "*8+8, %rsp")
 
+#define REFRESH_LOCALS_TO_STACK(...) asm(""::__VA_ARGS__)
+#define REFRESH_LOCALS_FROM_STACK(...) asm("":__VA_ARGS__)
 
 // ABI:
 // arg1: rdi

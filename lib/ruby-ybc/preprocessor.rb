@@ -45,36 +45,7 @@ class Preprocessor
     end
   end
   
-  ## work
-  def method_definitions
-    replace_sequence(
-      [:putspecialobject, 1],
-      [:putspecialobject, 2],
-      [:putobject, "+"],
-      [:putiseq, "+"],
-      [:send, :"core#define_method", "*"],
-      [:pop]) do |found|
-      name = found[2][1]
-      [
-        [:custom_defmethod, name, found[3][1]]
-        ]
-    end
-  end
-  
-  def smethod_definitions
-    replace_sequence(
-      [:putspecialobject, 1],
-      [:putself],
-      [:putobject, "+"],
-      [:putiseq, "+"],
-      [:send, :"core#define_singleton_method", "*"]
-      ) do |found|
-      name = found[2][1]
-      [
-        [:custom_defsmethod, name, found[3][1]]
-        ]
-    end
-  end
+  # work
   
   def proc_definitions
     replace_sequence(
@@ -86,24 +57,9 @@ class Preprocessor
         ]
     end
   end
-
-  def class_definitions
-    replace_sequence(
-      [:putspecialobject, 3],
-      [:putnil],
-      [:defineclass, "+"]) do |found|
-        name = found[2][1]
-        [
-          [:custom_defclass, name, found[2][2]]
-          ]
-      end
-  end
   
   def process
-    #method_definitions
-    #smethod_definitions
     proc_definitions
-    #class_definitions
     @iseq[13] = @body
   end
 end
