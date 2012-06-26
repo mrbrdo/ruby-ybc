@@ -16,6 +16,7 @@ module RubyYbc::MethodGenerator
       argc = iseq[4][:arg_size]
       # !!!  rb_define_method(rb_funcall(self.d, rb_intern("class"), 0), "met", met, 1);
       #TODO!!! (reciever!)
+      exec "clear_func_cache();"
       exec "RYBC_DEFINE_METHOD(self.d, #{name}, #{name}_impl, #{argc});"
 
       # core#define_method always returns nil
@@ -34,6 +35,7 @@ module RubyYbc::MethodGenerator
       argc = iseq[4][:arg_size]
       # !!!  rb_define_method(rb_funcall(self.d, rb_intern("class"), 0), "met", met, 1);
       #TODO!!! (reciever!)
+      exec "clear_func_cache();"
       exec "RYBC_DEFINE_SINGLETON_METHOD(self.d, #{name}, #{name}_impl, #{argc});"
 
       # core#define_singleton_method always returns nil

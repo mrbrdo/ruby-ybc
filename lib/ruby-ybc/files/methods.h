@@ -14,4 +14,5 @@ extern int func_ptr_cache_size;
 
 inline uintptr_t method_dispatch_ptr(VALUE, const char *, int);
 void append_method_to_dispatch_table(VALUE klass, const char *name, uintptr_t func);
+void clear_func_cache();
 void InitMethods();
