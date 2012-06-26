@@ -1,6 +1,8 @@
 This is very uncomplete and in early stages. The compiler works by translating YARV bytecode into C code (a Ruby C extension).
 Only Ruby 1.9.3-p194 tested! Ruby 1.9.3-p0 does NOT work. Only works on 64-bit OSX with Xcode command line tools installed (in other words, clang must be installed).
 
+Pull requests are welcome :-)
+
 == Tests
 There are some examples that currently can be compiled in spec/examples.
 Run rspec spec/unit/general.rb to run the tests.
